@@ -4,10 +4,6 @@
       "B2-402": {
         "person": 1,
         "time": "14:30"
-      },
-      "TEST_SIM_ROOM": {
-        "person": 2,
-        "time": "15:00"
       }
     }
   },
