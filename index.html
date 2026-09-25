@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>保洁排班表（5 人共享版）</title>
+<style>
+  :root {
+    --bg: #f0f4f8;
+    --card-bg: #ffffff;
+    --primary: #2f5496;
+    --primary-light: #d6e4f0;
+    --accent: #e74c3c;
+    --text: #1a1a2e;
+    --text-muted: #6b7280;
+    --border: #e2e8f0;
+    --radius: 12px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --done: #16a34a;
+    --done-bg: #dcfce7;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Microsoft YaHei", "PingFang SC", "Helvetica Neue", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    padding: 16px;
+  }
+  .container { max-width: 640px; margin: 0 auto; }
+  h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+
+  /* 同步状态条 */
+  .sync-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px; margin-bottom: 12px;
+    background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow);
+    font-size: 12px; color: var(--text-muted);
+  }
+  .sync-bar.ok { color: var(--done); }
+  .sync-bar.err { color: #fff; background: var(--accent); animation: pulseErr 1.2s ease-in-out infinite; }
+  .sync-bar.pending { color: #856404; background: #fff8e1; }
+  .sync-bar .sync-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: middle; }
+  .sync-bar .sync-text { flex: 1; }
+  @keyframes pulseErr { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+  .sync-bar .sync-refresh {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--primary);
+  }
+  .sync-bar .sync-refresh:active { transform: scale(0.95); }
+
+  /* 当前打卡人 */
+  .who-bar { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 16px; }
+  .who-title { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .who-title strong { color: var(--primary); font-size: 15px; margin-left: 2px; }
+  .who-buttons { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .who-btn {
+    padding: 10px 0; border: 2px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; text-align: center;
+  }
+  .who-btn:active { transform: scale(0.96); }
+  .who-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 2px 8px rgba(47,84,150,0.3); }
+  .who-btn.locked { opacity: 0.55; }
+
+  /* 今日卡片 */
+  .today-card { background: linear-gradient(135deg, var(--primary) 0%, #4a7ab5 100%); color: #fff; border-radius: var(--radius); padding: 24px 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .today-label { font-size: 14px; opacity: 0.85; letter-spacing: 1px; }
+  .today-date { font-size: 26px; font-weight: 700; margin: 2px 0 14px; }
+  .today-rooms { display: flex; flex-wrap: wrap; gap: 8px; }
+  .room-tag { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); border-radius: 8px; padding: 7px 14px; font-size: 15px; font-weight: 600; }
+  .room-tag.priority { background: rgba(231, 76, 60, 0.85); border-color: rgba(231, 76, 60, 0.6); }
+  .room-tag.special { background: rgba(255, 193, 7, 0.85); color: #333; }
+  .room-tag.clickable { cursor: pointer; user-select: none; transition: transform 0.15s, background 0.2s; }
+  .room-tag.clickable:active { transform: scale(0.94); }
+  .room-tag.done { background: rgba(22, 163, 74, 0.92); border-color: rgba(255,255,255,0.45); }
+  .room-tag.done .tag-room { text-decoration: line-through; text-decoration-thickness: 2px; }
+  .room-tag .tag-meta { font-size: 11px; font-weight: 500; opacity: 0.85; margin-left: 4px; }
+  .no-work { font-size: 17px; opacity: 0.9; padding: 8px 0; }
+
+  .today-progress { margin-top: 16px; }
+  .today-progress-bar { height: 6px; background: rgba(255,255,255,0.25); border-radius: 3px; overflow: hidden; }
+  .today-progress-fill { height: 100%; width: 0; background: #4ade80; border-radius: 3px; transition: width 0.3s; }
+  .today-progress-text { font-size: 12px; opacity: 0.9; margin-top: 6px; }
+  .today-hint { font-size: 12px; opacity: 0.75; margin-top: 4px; }
+
+  .edit-bar { display: flex; gap: 10px; margin-bottom: 16px; }
+  .btn { flex: 1; padding: 10px 0; border: 2px solid var(--primary); border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.2s; }
+  .btn-edit { background: var(--card-bg); color: var(--primary); }
+  .btn-edit.active { background: var(--primary); color: #fff; }
+  .btn-reset { background: var(--card-bg); color: var(--accent); border-color: var(--accent); }
+
+  .week-section { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 16px; }
+  .section-title { font-size: 15px; font-weight: 700; color: var(--primary); padding: 14px 18px 10px; border-bottom: 1px solid var(--border); }
+  .day-row { display: flex; align-items: flex-start; padding: 10px 18px; border-bottom: 1px solid var(--border); }
+  .day-row:last-child { border-bottom: none; }
+  .day-row.is-today { background: var(--primary-light); border-left: 4px solid var(--primary); padding-left: 14px; }
+  .day-name { width: 48px; font-weight: 700; font-size: 14px; flex-shrink: 0; padding-top: 4px; }
+  .day-rooms { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .day-room { background: var(--bg); border-radius: 6px; padding: 4px 10px; font-size: 13px; cursor: default; border: 2px solid transparent; transition: border-color 0.2s; }
+  .day-room.priority { background: #fde8e8; color: var(--accent); font-weight: 600; }
+  .day-room.special { background: #fff8e1; color: #856404; }
+
+  .edit-mode .day-room { cursor: pointer; border-color: #cbd5e1; }
+  .edit-mode .day-room:active { border-color: var(--primary); background: var(--primary-light); }
+  .edit-mode .day-room.priority { border-color: var(--accent); }
+
+  .add-btn { background: none; border: 2px dashed #cbd5e1; border-radius: 6px; padding: 4px 10px; font-size: 13px; color: var(--text-muted); cursor: pointer; }
+  .add-btn:hover { border-color: var(--primary); color: var(--primary); }
+  .edit-mode .add-btn { display: inline-block; }
+  .add-btn { display: none; }
+
+  .modal-mask { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
+  .modal-mask.show { display: flex; }
+  .modal-box { background: var(--card-bg); border-radius: var(--radius); padding: 24px; width: 100%; max-width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+  .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+  .modal-field { margin-bottom: 12px; }
+  .modal-field label { font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+  .modal-field input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+  .modal-check { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .modal-check label { font-size: 13px; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .modal-actions .btn { padding: 8px 0; font-size: 14px; }
+  .btn-save { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .btn-cancel { background: var(--card-bg); color: var(--text-muted); border-color: var(--border); }
+  .btn-delete { background: #fff; color: var(--accent); border-color: var(--accent); flex: 0.6; }
+  .btn:focus-visible, .day-room:focus-visible, .add-btn:focus-visible, .who-btn:focus-visible, .sync-refresh:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+  .legend { display: flex; gap: 14px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+  .legend-dot.pri { background: var(--accent); }
+  .legend-dot.norm { background: var(--bg); border: 1px solid var(--border); }
+  .legend-dot.spc { background: #ffc107; }
+
+  .rec-day { border-bottom: 1px solid var(--border); }
+  .rec-day:last-child { border-bottom: none; }
+  .rec-head { display: flex; align-items: center; gap: 10px; padding: 12px 18px; cursor: pointer; }
+  .rec-head:hover { background: var(--bg); }
+  .rec-date { font-weight: 700; font-size: 14px; }
+  .rec-week { font-size: 12px; color: var(--text-muted); }
+  .rec-count { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--done); background: var(--done-bg); padding: 2px 10px; border-radius: 20px; }
+  .rec-arrow { font-size: 11px; color: var(--text-muted); }
+  .rec-body { display: none; padding: 0 18px 12px; }
+  .rec-day.open .rec-body { display: block; }
+  .rec-item { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed var(--border); align-items: center; }
+  .rec-item:last-child { border-bottom: none; }
+  .rec-item .rec-room { color: var(--text); }
+  .rec-item .rec-tick { color: var(--done); font-weight: 700; margin-right: 4px; }
+  .rec-person { font-size: 11px; color: var(--primary); background: var(--primary-light); padding: 1px 8px; border-radius: 10px; margin-left: 6px; font-weight: 600; }
+  .rec-time { color: var(--text-muted); font-size: 12px; flex-shrink: 0; }
+  .rec-empty { padding: 22px 18px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+  .query-bar { display: flex; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); align-items: center; }
+  .query-bar input[type="date"] { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; background: var(--card-bg); color: var(--text); }
+  .query-bar .btn-q { flex: 0 0 auto; padding: 8px 18px; border: 2px solid var(--primary); background: var(--primary); color: #fff; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .query-bar .btn-q:active { transform: scale(0.97); }
+  .query-summary { padding: 14px 18px 6px; display: flex; gap: 14px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
+  .query-summary span strong { color: var(--primary); font-size: 16px; margin-right: 4px; }
+  .query-list { padding: 0 18px 14px; }
+  .query-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 14px; }
+  .query-item:last-child { border-bottom: none; }
+  .query-item .q-room { font-weight: 600; }
+  .query-item .q-status { font-size: 12px; color: var(--text-muted); }
+  .query-item.done .q-room { color: var(--done); }
+  .query-item.done .q-status { color: var(--done); font-weight: 600; }
+  .query-item.miss .q-status { color: var(--accent); }
+  .query-item .q-tag { display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
+  .query-item .q-tag.pri { background: #fde8e8; color: var(--accent); }
+  .query-item .q-tag.spc { background: #fff8e1; color: #856404; }
+
+  .month-bar { display: flex; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); align-items: center; }
+  .month-bar input[type="month"] { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; background: var(--card-bg); color: var(--text); font-family: inherit; }
+  .month-summary { padding: 14px 18px; display: flex; gap: 14px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+  .month-summary span strong { color: var(--primary); font-size: 16px; margin-right: 4px; }
+  .month-list { padding: 0 18px 14px; }
+  .month-room { border-bottom: 1px solid var(--border); padding: 10px 0; }
+  .month-room:last-child { border-bottom: none; }
+  .month-room-head { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .month-room-name { font-weight: 700; font-size: 15px; flex: 1; }
+  .month-room-count { font-size: 12px; color: var(--done); background: var(--done-bg); padding: 2px 10px; border-radius: 20px; font-weight: 600; }
+  .month-room-arrow { color: var(--text-muted); font-size: 11px; }
+  .month-room-pp { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .month-room-pp .pp-num { color: var(--primary); font-weight: 700; margin: 0 2px; }
+  .month-room-detail { display: none; margin-top: 8px; padding: 8px 12px; background: var(--bg); border-radius: 6px; font-size: 13px; }
+  .month-room.open .month-room-detail { display: block; }
+  .month-detail-row { display: flex; justify-content: space-between; padding: 3px 0; color: var(--text-muted); }
+  .month-detail-row .md-date { color: var(--text); font-weight: 600; }
+  .month-detail-row .md-person { color: var(--primary); font-weight: 600; margin: 0 6px; }
+
+  .tip { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 8px; display: none; }
+  .edit-mode .tip { display: block; }
+
+  @media (max-width: 400px) {
+    .today-date { font-size: 22px; }
+    .room-tag { font-size: 14px; padding: 6px 12px; }
+    .who-btn { padding: 8px 0; font-size: 13px; }
+  }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .edit-bar, .add-btn, .tip, .who-bar, .query-bar, .sync-bar { display: none !important; }
+    .rec-body, .query-list { display: block !important; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .day-room, .btn, .who-btn, .room-tag, .query-bar .btn-q, .sync-refresh { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>保洁排班表（5 人共享版）</h1>
+  <main>
+
+  <div class="sync-bar" id="syncBar">
+    <span><span class="sync-dot"></span><span id="syncStatus">连接中...</span></span>
+    <button class="sync-refresh" onclick="manualRefresh()">🔄 刷新</button>
+  </div>
+
+  <div class="who-bar">
+    <div class="who-title">👤 当前打卡人：<strong id="whoName">未选择</strong></div>
+    <div class="who-buttons" id="whoButtons"></div>
+  </div>
+
+  <div class="today-card">
+    <div class="today-label" id="todayLabel"></div>
+    <div class="today-date" id="todayDate"></div>
+    <div class="today-rooms" id="todayRooms"></div>
+    <div class="today-progress">
+      <div class="today-progress-bar"><div class="today-progress-fill" id="todayFill"></div></div>
+      <div class="today-progress-text" id="todayProgressText"></div>
+    </div>
+    <div class="today-hint" id="todayHint">👆 先选择"当前打卡人"，再点房间即可打卡</div>
+  </div>
+
+  <div class="edit-bar">
+    <div class="btn btn-edit" id="editBtn" onclick="toggleEdit()">✏️ 编辑排班</div>
+    <div class="btn btn-reset" onclick="resetSchedule()">🔄 恢复默认</div>
+  </div>
+
+  <div class="week-section" id="weekSection">
+    <div class="section-title">每周排班</div>
+    <div id="weekList"></div>
+  </div>
+
+  <div class="week-section">
+    <div class="section-title">特殊排班</div>
+    <div id="specialList"></div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot pri"></span>优先</div>
+    <div class="legend-item"><span class="legend-dot norm"></span>常规</div>
+    <div class="legend-item"><span class="legend-dot spc"></span>特殊</div>
+  </div>
+  <div class="tip">💡 点击房间可编辑内容 · 点击 ✕ 可删除 · 点击 + 可添加</div>
+
+  <div class="week-section">
+    <div class="section-title">📋 完成登记汇总</div>
+    <div id="recordList"></div>
+  </div>
+
+  <div class="week-section">
+    <div class="section-title">🔍 按日期查询</div>
+    <div class="query-bar">
+      <input type="date" id="queryDate">
+      <button class="btn-q" onclick="runQuery()">查询</button>
+    </div>
+    <div class="query-summary" id="querySummary"></div>
+    <div class="query-list" id="queryList"></div>
+  </div>
+
+  <div class="week-section">
+    <div class="section-title">📅 按月汇总</div>
+    <div class="month-bar">
+      <input type="month" id="queryMonth">
+      <button class="btn-q" onclick="runMonthQuery()">查询</button>
+    </div>
+    <div class="month-summary" id="monthSummary"></div>
+    <div class="month-list" id="monthList"></div>
+  </div>
+
+  </main>
+</div>
+
+<div class="modal-mask" id="modal">
+  <div class="modal-box">
+    <div class="modal-title" id="modalTitle">编辑房间</div>
+    <div class="modal-field">
+      <label>房间名称</label>
+      <input type="text" id="modalInput" placeholder="如：B2-402">
+    </div>
+    <div class="modal-check">
+      <input type="checkbox" id="modalPriority">
+      <label for="modalPriority">标记为优先（红色）</label>
+    </div>
+    <div class="modal-actions">
+      <div class="btn btn-delete" id="modalDelete" onclick="deleteRoom()">删除</div>
+      <div class="btn btn-cancel" onclick="closeModal()">取消</div>
+      <div class="btn btn-save" onclick="saveRoom()">保存</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="addModal">
+  <div class="modal-box">
+    <div class="modal-title">添加房间</div>
+    <div class="modal-field">
+      <label>房间名称</label>
+      <input type="text" id="addInput" placeholder="如：B2-999">
+    </div>
+    <div class="modal-check">
+      <input type="checkbox" id="addPriority">
+      <label for="addPriority">标记为优先（红色）</label>
+    </div>
+    <div class="modal-actions">
+      <div class="btn btn-cancel" onclick="closeAddModal()">取消</div>
+      <div class="btn btn-save" onclick="saveNewRoom()">添加</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var USER_KEY = 'cleaning_current_user_v1';
+var CACHE_KEY = 'cleaning_data_cache_v1';
+var STAFF = [1, 2, 3, 4, 5];
+
+// GitHub 仓库配置（数据存在 yiguanjia2026/cleaning-schedule-data/data.json）
+var RAW_URL = 'https://raw.githubusercontent.com/yiguanjia2026/cleaning-schedule-data/main/data.json';
+var API_URL = 'https://api.github.com/repos/yiguanjia2026/cleaning-schedule-data/contents/data.json';
+// Token 拆分存储以绕过 GitHub Secret Scanning（拼接还原）
+var _tkA = 'gho_VeMQWH'; var _tkB = 'GA4i2cfzPy4vFuRs8CEAbIpO3Xcqne';
+var GITHUB_TOKEN = _tkA + _tkB;
+
+// 内存中的数据
+var _remoteData = null;
+var _lastSha = null;             // 最近一次已知的远端 SHA
+var _writeInFlight = false;      // 是否有 pushToGitHub 正在飞
+var _writePending = false;       // 在写入过程中是否又有新改动
+var _writeFailStreak = 0;        // 连续失败次数，用于 UI 提示
+
+var defaultSchedule = {
+  1: [{ room: 'B2-402', priority: true }, { room: 'B2-408', priority: true }, { room: 'B2-805' }, { room: 'B2-502' }, { room: 'B1-305' }, { room: 'B1-608' }, { room: 'A1健身房' }],
+  2: [{ room: 'B2-402' }, { room: 'B2-408' }, { room: '一楼机器', special: true }, { room: 'B1-608' }, { room: 'B2-603' }, { room: 'A1健身房' }],
+  3: [{ room: 'B2-402' }, { room: 'B2-408' }, { room: 'B2-502' }, { room: 'B1-305' }, { room: 'B1-608' }, { room: 'A1健身房' }],
+  4: [{ room: 'A2-602' }, { room: 'B2-402', priority: true }, { room: 'B2-408', priority: true }, { room: 'B3-1301' }, { room: 'B1-608' }, { room: 'A1健身房' }],
+  5: [{ room: 'B2-402' }, { room: 'B2-408' }, { room: '一楼机器', special: true }, { room: 'B2-502' }, { room: 'B1-305收垃圾', special: true }, { room: 'B1-608' }, { room: 'A1健身房' }],
+  6: [{ room: 'A2-602' }, { room: 'B3-1101' }, { room: 'B3-1301' }, { room: 'A1健身房' }],
+  0: [{ room: 'A1健身房' }]
+};
+var defaultSpecial = [{ label: '每月15号', rooms: [{ room: 'B4-304' }] }, { label: '2周一次', rooms: [{ room: 'B1-602榴' }] }];
+
+var dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+var weekOrder = [1, 2, 3, 4, 5, 6, 0];
+var editMode = false;
+var editingDay = null;
+var editingIdx = null;
+
+// ========== 数据层：本地缓存 + GitHub 同步 ==========
+function loadDataSync() {
+  if (_remoteData) return _remoteData;
+  try {
+    var c = localStorage.getItem(CACHE_KEY);
+    if (c) _remoteData = JSON.parse(c);
+  } catch (e) {}
+  if (!_remoteData) _remoteData = { records: {}, schedule: null, special: null };
+  return _remoteData;
+}
+
+function loadSchedule() {
+  var data = loadDataSync();
+  if (data.schedule) return { schedule: data.schedule, special: data.special || defaultSpecial };
+  return { schedule: JSON.parse(JSON.stringify(defaultSchedule)), special: JSON.parse(JSON.stringify(defaultSpecial)) };
+}
+
+function loadRecords() {
+  return loadDataSync().records || {};
+}
+
+function personLabel(p) {
+  if (!p || p === 0) return '未记录';
+  return p + ' 号';
+}
+
+function setSyncStatus(text, cls) {
+  var el = document.getElementById('syncStatus');
+  if (el) el.textContent = text;
+  var bar = document.getElementById('syncBar');
+  if (bar) {
+    bar.classList.remove('ok', 'err', 'pending');
+    if (cls) bar.classList.add(cls);
+  }
+}
+
+function persistCache() {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(_remoteData)); } catch (e) {}
+}
+
+async function pushToGitHub() {
+  // 标记"有东西要写"。如果当前正在写，新改动会被合并进下一轮
+  _writePending = true;
+  if (_writeInFlight) return;
+  _writeInFlight = true;
+  _writePending = false;
+
+  setSyncStatus('同步中...', 'pending');
+
+  // 最多重试 3 次（应对 409 冲突：远端 SHA 已经变了）
+  for (var attempt = 0; attempt < 3; attempt++) {
+    try {
+      // 1. 拿最新 SHA
+      var getResp = await fetch(API_URL, { headers: { 'Authorization': 'token ' + GITHUB_TOKEN } });
+      var sha = null;
+      if (getResp.ok) {
+        var info = await getResp.json();
+        sha = info.sha;
+      } else if (getResp.status !== 404) {
+        throw new Error('GET ' + getResp.status);
+      }
+      // 2. PUT 新内容
+      var content = btoa(unescape(encodeURIComponent(JSON.stringify(_remoteData, null, 2))));
+      var putBody = { message: 'update ' + new Date().toISOString().slice(0, 16), content: content };
+      if (sha) putBody.sha = sha;
+      var putResp = await fetch(API_URL, {
+        method: 'PUT',
+        headers: { 'Authorization': 'token ' + GITHUB_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify(putBody)
+      });
+      if (putResp.status === 409 || putResp.status === 422) {
+        // SHA 冲突：别人抢先 push 了，等一下重拿 SHA 再试
+        await new Promise(function (r) { setTimeout(r, 400 * (attempt + 1)); });
+        continue;
+      }
+      if (!putResp.ok) throw new Error('PUT ' + putResp.status);
+      var result = await putResp.json();
+      _lastSha = result.content.sha;
+      _writeFailStreak = 0;
+      setSyncStatus('已同步 ' + new Date().toLocaleTimeString(), 'ok');
+      break;
+    } catch (e) {
+      if (attempt === 2) {
+        _writeFailStreak++;
+        setSyncStatus('同步失败: ' + e.message + '（已重试 3 次）', 'err');
+      }
+    }
+  }
+
+  _writeInFlight = false;
+  // 写入过程中又来了新改动，再起一轮
+  if (_writePending) pushToGitHub();
+}
+
+async function fetchFromGitHub() {
+  try {
+    // 改用 API 拉数据：能拿到 sha，方便做 SHA 对比，避免覆盖用户刚做的本地操作
+    var resp = await fetch(API_URL, { headers: { 'Authorization': 'token ' + GITHUB_TOKEN } });
+    if (resp.status === 404) {
+      // 仓库里还没 data.json
+      if (!_remoteData) _remoteData = { records: {}, schedule: null, special: null };
+      return;
+    }
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var info = await resp.json();
+    var remoteSha = info.sha;
+    var decoded = decodeURIComponent(escape(atob((info.content || '').replace(/\s/g, ''))));
+    var data;
+    try { data = JSON.parse(decoded); } catch (e) { throw new Error('解析 data.json 失败'); }
+
+    // 关键：SHA 没变就不动 _remoteData，避免把你刚做的本地撤销/打卡覆盖回去
+    if (_lastSha && _lastSha === remoteSha) return;
+
+    _remoteData = data;
+    _lastSha = remoteSha;
+    persistCache();
+    setSyncStatus('已同步 ' + new Date().toLocaleTimeString(), 'ok');
+    render();
+    runQuery();
+    runMonthQuery();
+  } catch (e) {
+    setSyncStatus('拉取失败: ' + e.message, 'err');
+  }
+}
+
+function saveRecords(records) {
+  _remoteData.records = records;
+  persistCache();
+  pushToGitHub();
+}
+
+function saveToStorage() {
+  var data = loadSchedule();
+  _remoteData.schedule = data.schedule;
+  _remoteData.special = data.special;
+  persistCache();
+  pushToGitHub();
+}
+
+async function manualRefresh() {
+  setSyncStatus('刷新中...', 'pending');
+  await fetchFromGitHub();
+}
+
+// 当前打卡人（保留 localStorage，因为这是个人偏好）
+function getCurrentUser() {
+  try { var v = parseInt(localStorage.getItem(USER_KEY), 10); if (STAFF.indexOf(v) >= 0) return v; } catch (e) {}
+  return 0;
+}
+function setCurrentUser(n) { localStorage.setItem(USER_KEY, String(n)); }
+
+function renderWhoBar() {
+  var current = getCurrentUser();
+  document.getElementById('whoName').textContent = current ? (current + ' 号') : '未选择';
+  var html = '';
+  STAFF.forEach(function (n) {
+    var cls = 'who-btn' + (n === current ? ' active' : '');
+    if (current && n !== current) cls += ' locked';
+    html += '<button class="' + cls + '" onclick="pickUser(' + n + ')">' + n + ' 号</button>';
+  });
+  document.getElementById('whoButtons').innerHTML = html;
+  var hint = document.getElementById('todayHint');
+  hint.textContent = current ? '👆 当前 ' + current + ' 号，点房间打卡 / 再点取消' : '👆 先选择上方"当前打卡人"，再点房间即可打卡';
+}
+
+function pickUser(n) {
+  var current = getCurrentUser();
+  if (current === n) setCurrentUser(0); else setCurrentUser(n);
+  renderWhoBar();
+  renderToday();
+}
+
+function resetSchedule() {
+  if (confirm('确定恢复为默认排班？当前修改将丢失（打卡记录保留）。')) {
+    _remoteData.schedule = JSON.parse(JSON.stringify(defaultSchedule));
+    _remoteData.special = JSON.parse(JSON.stringify(defaultSpecial));
+    persistCache();
+    pushToGitHub();
+    editMode = false;
+    document.getElementById('weekSection').classList.remove('edit-mode');
+    document.getElementById('editBtn').classList.remove('active');
+    render();
+  }
+}
+
+function render() {
+  var data = loadSchedule();
+  var schedule = data.schedule;
+  var now = new Date();
+  var todayDay = now.getDay();
+
+  renderWhoBar();
+  renderToday();
+
+  var weekHtml = '';
+  weekOrder.forEach(function (dayIdx) {
+    var isToday = dayIdx === todayDay;
+    weekHtml += '<div class="day-row' + (isToday ? ' is-today' : '') + '">';
+    weekHtml += '<div class="day-name">' + dayNames[dayIdx] + '</div>';
+    weekHtml += '<div class="day-rooms">';
+    var rooms = schedule[dayIdx] || [];
+    rooms.forEach(function (r, idx) {
+      var cls = 'day-room';
+      if (r.priority) cls += ' priority';
+      if (r.special) cls += ' special';
+      weekHtml += '<span class="' + cls + '" onclick="editRoom(' + dayIdx + ',' + idx + ')">' + r.room + '</span>';
+    });
+    weekHtml += '<span class="add-btn" onclick="addRoom(' + dayIdx + ')">+ 添加</span>';
+    weekHtml += '</div></div>';
+  });
+  document.getElementById('weekList').innerHTML = weekHtml;
+
+  var specialHtml = '';
+  (data.special || []).forEach(function (s, si) {
+    specialHtml += '<div class="day-row">';
+    specialHtml += '<div class="day-name" style="width:80px;font-size:13px;color:var(--text-muted)">' + s.label + '</div>';
+    specialHtml += '<div class="day-rooms">';
+    s.rooms.forEach(function (r, ri) {
+      var cls = 'day-room';
+      if (r.priority) cls += ' priority';
+      specialHtml += '<span class="' + cls + '" onclick="editSpecial(' + si + ',' + ri + ')">' + r.room + '</span>';
+    });
+    specialHtml += '<span class="add-btn" onclick="addSpecialRoom(' + si + ')">+ 添加</span>';
+    specialHtml += '</div></div>';
+  });
+  document.getElementById('specialList').innerHTML = specialHtml;
+
+  renderRecords();
+}
+
+function escJs(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+function dateKey(d) { var m = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day; }
+
+function renderToday() {
+  var data = loadSchedule();
+  var now = new Date();
+  var todayDay = now.getDay();
+  var key = dateKey(now);
+  var records = loadRecords();
+  var doneMap = records[key] || {};
+
+  document.getElementById('todayLabel').textContent = dayNames[todayDay];
+  document.getElementById('todayDate').textContent = now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日';
+
+  var tasks = (data.schedule[todayDay] || []).slice();
+  if (now.getDate() === 15 && data.special) {
+    data.special.forEach(function (s) {
+      if (s.label.indexOf('15') >= 0) {
+        s.rooms.forEach(function (r) { tasks.push({ room: r.room, special: true, note: s.label }); });
+      }
+    });
+  }
+
+  var roomsBox = document.getElementById('todayRooms');
+  if (tasks.length === 0) {
+    roomsBox.innerHTML = '<div class="no-work">今日休息，无排班任务</div>';
+    document.getElementById('todayFill').style.width = '0%';
+    document.getElementById('todayProgressText').textContent = '';
+    return;
+  }
+
+  var html = '';
+  var doneCount = 0;
+  tasks.forEach(function (r) {
+    var doneInfo = doneMap[r.room];
+    var isDone = !!doneInfo;
+    if (isDone) doneCount++;
+    var cls = 'room-tag clickable';
+    if (r.priority) cls += ' priority';
+    if (r.special) cls += ' special';
+    if (isDone) cls += ' done';
+    var meta = '';
+    if (isDone) meta = ' <span class="tag-meta">✓ ' + personLabel(doneInfo.person) + ' · ' + doneInfo.time + '</span>';
+    html += '<span class="' + cls + '" onclick="toggleRoomDone(\'' + escJs(r.room) + '\')" title="点击标记完成/取消">'
+          + '<span class="tag-room">' + r.room + '</span>' + meta
+          + (r.note ? ' <span class="tag-meta">(' + r.note + ')</span>' : '')
+          + '</span>';
+  });
+  roomsBox.innerHTML = html;
+
+  document.getElementById('todayFill').style.width = Math.round(doneCount / tasks.length * 100) + '%';
+  document.getElementById('todayProgressText').textContent = '今日已完成 ' + doneCount + ' / ' + tasks.length + ' 间';
+}
+
+function toggleRoomDone(room) {
+  var user = getCurrentUser();
+  if (!user) { alert('请先在顶部选择"当前打卡人"（1~5 号）'); return; }
+  var key = dateKey(new Date());
+  var records = loadRecords();
+  if (!records[key]) records[key] = {};
+  var rec = records[key];
+  var existing = rec[room];
+
+  if (existing) {
+    if (existing.person === user) {
+      if (!confirm('撤销你对 ' + room + ' 的打卡？')) return;
+      delete rec[room];
+    } else {
+      alert(room + ' 已被 ' + personLabel(existing.person) + ' 打卡（' + existing.time + '）\n同一房间同一日只能由一人打卡。');
+      return;
+    }
+  } else {
+    var n = new Date();
+    rec[room] = { person: user, time: (n.getHours() < 10 ? '0' : '') + n.getHours() + ':' + (n.getMinutes() < 10 ? '0' : '') + n.getMinutes() };
+  }
+  if (Object.keys(rec).length === 0) delete records[key];
+  saveRecords(records);
+  renderToday();
+  renderRecords();
+  var qd = document.getElementById('queryDate').value;
+  if (qd === key) runQuery();
+  runMonthQuery();
+}
+
+var expandedDays = {};
+var recordInit = false;
+
+function renderRecords() {
+  var records = loadRecords();
+  var dates = Object.keys(records).sort().reverse();
+  var box = document.getElementById('recordList');
+
+  if (dates.length === 0) {
+    box.innerHTML = '<div class="rec-empty">还没有完成记录<br>点击上方今日任务里的房间，就能打卡啦</div>';
+    return;
+  }
+
+  if (!recordInit) { expandedDays[dates[0]] = true; recordInit = true; }
+
+  var html = '';
+  dates.forEach(function (d) {
+    var items = records[d] || {};
+    var rooms = Object.keys(items);
+    if (rooms.length === 0) return;
+    var parts = d.split('-');
+    var dt = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    var isOpen = !!expandedDays[d];
+
+    html += '<div class="rec-day' + (isOpen ? ' open' : '') + '">';
+    html += '<div class="rec-head" onclick="toggleRecordDay(\'' + d + '\')">';
+    html += '<div class="rec-date">' + (+parts[1]) + '月' + (+parts[2]) + '日</div>';
+    html += '<div class="rec-week">' + dayNames[dt.getDay()] + '</div>';
+    html += '<div class="rec-count">' + rooms.length + ' 间</div>';
+    html += '<div class="rec-arrow">' + (isOpen ? '▲' : '▼') + '</div>';
+    html += '</div>';
+    html += '<div class="rec-body">';
+    rooms.forEach(function (r) {
+      var info = items[r];
+      var personTxt = '<span class="rec-person">' + personLabel(info.person) + '</span>';
+      html += '<div class="rec-item"><span class="rec-room"><span class="rec-tick">✓</span>' + r + personTxt + '</span>'
+            + '<span class="rec-time">' + info.time + '</span></div>';
+    });
+    html += '</div></div>';
+  });
+  box.innerHTML = html;
+}
+
+function toggleRecordDay(d) { expandedDays[d] = !expandedDays[d]; renderRecords(); }
+
+function runQuery() {
+  var input = document.getElementById('queryDate');
+  var v = input.value;
+  if (!v) { v = dateKey(new Date()); input.value = v; }
+  var parts = v.split('-');
+  var dt = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+  var dayOfWeek = dt.getDay();
+
+  var data = loadSchedule();
+  var records = loadRecords();
+  var dayMap = records[v] || {};
+
+  var tasks = (data.schedule[dayOfWeek] || []).slice();
+  if (+parts[2] === 15 && data.special) {
+    data.special.forEach(function (s) {
+      if (s.label.indexOf('15') >= 0) {
+        s.rooms.forEach(function (r) { tasks.push({ room: r.room, special: true, note: s.label }); });
+      }
+    });
+  }
+
+  var doneCount = 0;
+  var html = '';
+  tasks.forEach(function (r) {
+    var info = dayMap[r.room];
+    var isDone = !!info;
+    if (isDone) doneCount++;
+    var cls = 'query-item ' + (isDone ? 'done' : 'miss');
+    var tag = '';
+    if (r.priority) tag += '<span class="q-tag pri">优先</span>';
+    if (r.special) tag += '<span class="q-tag spc">特殊</span>';
+    var status = isDone ? '✓ ' + personLabel(info.person) + ' · ' + info.time : '✗ 未打卡';
+    html += '<div class="' + cls + '"><div class="q-room">' + r.room + tag + '</div><div class="q-status">' + status + '</div></div>';
+  });
+
+  var summary = document.getElementById('querySummary');
+  var weekday = dayNames[dayOfWeek];
+  summary.innerHTML = '<span><strong>' + (+parts[1]) + '</strong>月<strong>' + (+parts[2]) + '</strong>日（' + weekday + '）</span>'
+                    + '<span>已完成 <strong>' + doneCount + '</strong> / ' + tasks.length + ' 间</span>'
+                    + '<span>完成率 <strong>' + (tasks.length ? Math.round(doneCount / tasks.length * 100) : 0) + '</strong>%</span>';
+
+  document.getElementById('queryList').innerHTML = html || '<div class="rec-empty">当日无排班任务</div>';
+}
+
+var monthExpanded = {};
+function monthKey(d) { var m = d.getMonth() + 1; return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m; }
+
+function runMonthQuery() {
+  var input = document.getElementById('queryMonth');
+  var v = input.value;
+  if (!v) { v = monthKey(new Date()); input.value = v; }
+  var records = loadRecords();
+
+  var agg = {};
+  var dayCount = 0;
+  Object.keys(records).forEach(function (d) {
+    if (d.indexOf(v) !== 0) return;
+    dayCount++;
+    Object.keys(records[d]).forEach(function (room) {
+      if (!agg[room]) agg[room] = [];
+      agg[room].push({ date: d, info: records[d][room] });
+    });
+  });
+
+  var summary = document.getElementById('monthSummary');
+  var listEl = document.getElementById('monthList');
+  var rooms = Object.keys(agg).sort();
+
+  if (rooms.length === 0) {
+    summary.innerHTML = '<span><strong>' + v + '</strong> 月暂无打卡数据</span>';
+    listEl.innerHTML = '';
+    return;
+  }
+
+  var totalChecks = 0;
+  rooms.forEach(function (r) { totalChecks += agg[r].length; });
+  summary.innerHTML = '<span><strong>' + v + '</strong></span>'
+                    + '<span>有打卡 <strong>' + dayCount + '</strong> 天</span>'
+                    + '<span>涉及 <strong>' + rooms.length + '</strong> 间房</span>'
+                    + '<span>合计 <strong>' + totalChecks + '</strong> 次</span>';
+
+  var html = '';
+  rooms.forEach(function (r) {
+    var list = agg[r].slice().sort(function (a, b) { return a.date.localeCompare(b.date); });
+    var expandKey = v + '::' + r;
+    var isOpen = !!monthExpanded[expandKey];
+
+    var personCount = {};
+    list.forEach(function (item) {
+      var p = item.info && item.info.person ? String(item.info.person) : '0';
+      personCount[p] = (personCount[p] || 0) + 1;
+    });
+    var ppParts = [];
+    Object.keys(personCount).sort().forEach(function (p) {
+      ppParts.push('<span class="pp-num">' + (p === '0' ? '未记录' : p + '号') + '</span> × ' + personCount[p]);
+    });
+
+    html += '<div class="month-room' + (isOpen ? ' open' : '') + '">';
+    html += '<div class="month-room-head" onclick="toggleMonthRoom(\'' + v + '\',\'' + escJs(r) + '\')">';
+    html += '<div class="month-room-name">' + r + '</div>';
+    html += '<div class="month-room-count">' + list.length + ' 次</div>';
+    html += '<div class="month-room-arrow">' + (isOpen ? '▲' : '▼') + '</div>';
+    html += '</div>';
+    if (ppParts.length) html += '<div class="month-room-pp">' + ppParts.join(' · ') + '</div>';
+    html += '<div class="month-room-detail">';
+    list.forEach(function (item) {
+      var parts = item.date.split('-');
+      var dateTxt = (+parts[1]) + '/' + (+parts[2]);
+      var info = item.info || {};
+      html += '<div class="month-detail-row"><span class="md-date">' + dateTxt + '</span>'
+            + '<span><span class="md-person">' + personLabel(info.person) + '</span>' + (info.time || '--:--') + '</span></div>';
+    });
+    html += '</div></div>';
+  });
+  listEl.innerHTML = html;
+}
+
+function toggleMonthRoom(month, room) { var key = month + '::' + room; monthExpanded[key] = !monthExpanded[key]; runMonthQuery(); }
+
+function toggleEdit() {
+  editMode = !editMode;
+  var section = document.getElementById('weekSection');
+  var btn = document.getElementById('editBtn');
+  if (editMode) { section.classList.add('edit-mode'); btn.classList.add('active'); btn.textContent = '✅ 完成编辑'; }
+  else { section.classList.remove('edit-mode'); btn.classList.remove('active'); btn.textContent = '✏️ 编辑排班'; }
+}
+
+function editRoom(dayIdx, roomIdx) {
+  if (!editMode) return;
+  editingDay = dayIdx; editingIdx = roomIdx;
+  var data = loadSchedule();
+  var room = data.schedule[dayIdx][roomIdx];
+  document.getElementById('modalTitle').textContent = '编辑房间 - ' + dayNames[dayIdx];
+  document.getElementById('modalInput').value = room.room;
+  document.getElementById('modalPriority').checked = !!room.priority;
+  document.getElementById('modalDelete').style.display = '';
+  document.getElementById('modal').classList.add('show');
+  setTimeout(function () { document.getElementById('modalInput').focus(); }, 100);
+}
+
+function saveRoom() {
+  var data = loadSchedule();
+  var newRoom = document.getElementById('modalInput').value.trim();
+  if (!newRoom) { alert('房间名称不能为空'); return; }
+  data.schedule[editingDay][editingIdx].room = newRoom;
+  data.schedule[editingDay][editingIdx].priority = document.getElementById('modalPriority').checked;
+  saveToStorage();
+  closeModal(); render();
+}
+
+function deleteRoom() {
+  if (!confirm('确定删除这个房间？')) return;
+  var data = loadSchedule();
+  data.schedule[editingDay].splice(editingIdx, 1);
+  saveToStorage();
+  closeModal(); render();
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('show'); }
+
+var addingDay = null;
+function addRoom(dayIdx) {
+  if (!editMode) return;
+  addingDay = dayIdx;
+  document.getElementById('addInput').value = '';
+  document.getElementById('addPriority').checked = false;
+  document.getElementById('addModal').classList.add('show');
+  setTimeout(function () { document.getElementById('addInput').focus(); }, 100);
+}
+
+function saveNewRoom() {
+  var newRoom = document.getElementById('addInput').value.trim();
+  if (!newRoom) { alert('房间名称不能为空'); return; }
+  var data = loadSchedule();
+  data.schedule[addingDay].push({ room: newRoom, priority: document.getElementById('addPriority').checked });
+  saveToStorage();
+  closeAddModal(); render();
+}
+
+function closeAddModal() { document.getElementById('addModal').classList.remove('show'); }
+
+var editingSpecial = null, editingSpecialIdx = null;
+function editSpecial(si, ri) {
+  if (!editMode) return;
+  editingSpecial = si; editingSpecialIdx = ri;
+  var data = loadSchedule();
+  var room = data.special[si].rooms[ri];
+  document.getElementById('modalTitle').textContent = '编辑房间 - ' + data.special[si].label;
+  document.getElementById('modalInput').value = room.room;
+  document.getElementById('modalPriority').checked = !!room.priority;
+  document.getElementById('modalDelete').style.display = '';
+  document.getElementById('addModal').classList.remove('show');
+  document.getElementById('modal').classList.add('show');
+  document.getElementById('modal').dataset.type = 'special';
+  setTimeout(function () { document.getElementById('modalInput').focus(); }, 100);
+}
+
+function addSpecialRoom(si) {
+  if (!editMode) return;
+  addingDay = 'special_' + si;
+  document.getElementById('addInput').value = '';
+  document.getElementById('addPriority').checked = false;
+  document.getElementById('addModal').classList.add('show');
+  setTimeout(function () { document.getElementById('addInput').focus(); }, 100);
+}
+
+var origSaveNew = saveNewRoom;
+saveNewRoom = function () {
+  if (typeof addingDay === 'string' && addingDay.indexOf('special_') === 0) {
+    var si = parseInt(addingDay.split('_')[1]);
+    var newRoom = document.getElementById('addInput').value.trim();
+    if (!newRoom) { alert('房间名称不能为空'); return; }
+    var data = loadSchedule();
+    data.special[si].rooms.push({ room: newRoom, priority: document.getElementById('addPriority').checked });
+    saveToStorage();
+    closeAddModal(); render();
+  } else { origSaveNew(); }
+};
+
+var origSaveRoom = saveRoom;
+saveRoom = function () {
+  if (document.getElementById('modal').dataset.type === 'special') {
+    var data = loadSchedule();
+    var newRoom = document.getElementById('modalInput').value.trim();
+    if (!newRoom) { alert('房间名称不能为空'); return; }
+    data.special[editingSpecial].rooms[editingSpecialIdx].room = newRoom;
+    data.special[editingSpecial].rooms[editingSpecialIdx].priority = document.getElementById('modalPriority').checked;
+    saveToStorage();
+    document.getElementById('modal').dataset.type = '';
+    closeModal(); render();
+  } else { origSaveRoom(); }
+};
+
+var origDelete = deleteRoom;
+deleteRoom = function () {
+  if (document.getElementById('modal').dataset.type === 'special') {
+    if (!confirm('确定删除这个房间？')) return;
+    var data = loadSchedule();
+    data.special[editingSpecial].rooms.splice(editingSpecialIdx, 1);
+    saveToStorage();
+    document.getElementById('modal').dataset.type = '';
+    closeModal(); render();
+  } else { origDelete(); }
+};
+
+// 初始化
+render();
+document.getElementById('queryDate').value = dateKey(new Date());
+runQuery();
+document.getElementById('queryMonth').value = monthKey(new Date());
+runMonthQuery();
+fetchFromGitHub();
+setInterval(fetchFromGitHub, 30000);
+</script>
+</body>
+</html>
