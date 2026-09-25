@@ -1,0 +1,60 @@
+{
+  "schedule": {
+    "1": [
+      {"room":"B2-402","priority":true},
+      {"room":"B2-408","priority":true},
+      {"room":"B2-805"},
+      {"room":"B2-502"},
+      {"room":"B1-305"},
+      {"room":"B1-608"},
+      {"room":"A1健身房"}
+    ],
+    "2": [
+      {"room":"B2-402"},
+      {"room":"B2-408"},
+      {"room":"一楼机器","special":true},
+      {"room":"B1-608"},
+      {"room":"B2-603"},
+      {"room":"A1健身房"}
+    ],
+    "3": [
+      {"room":"B2-402"},
+      {"room":"B2-408"},
+      {"room":"B2-502"},
+      {"room":"B1-305"},
+      {"room":"B1-608"},
+      {"room":"A1健身房"}
+    ],
+    "4": [
+      {"room":"A2-602"},
+      {"room":"B2-402","priority":true},
+      {"room":"B2-408","priority":true},
+      {"room":"B3-1301"},
+      {"room":"B1-608"},
+      {"room":"A1健身房"}
+    ],
+    "5": [
+      {"room":"B2-402"},
+      {"room":"B2-408"},
+      {"room":"一楼机器","special":true},
+      {"room":"B2-502"},
+      {"room":"B1-305收垃圾","special":true},
+      {"room":"B1-608"},
+      {"room":"A1健身房"}
+    ],
+    "6": [
+      {"room":"A2-602"},
+      {"room":"B3-1101"},
+      {"room":"B3-1301"},
+      {"room":"A1健身房"}
+    ],
+    "0": [
+      {"room":"A1健身房"}
+    ]
+  },
+  "special": [
+    {"label":"每月15号","rooms":[{"room":"B4-304"}]},
+    {"label":"2周一次","rooms":[{"room":"B1-602榴"}]}
+  ],
+  "records": {}
+}
