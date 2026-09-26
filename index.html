@@ -64,6 +64,24 @@
   .who-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 2px 8px rgba(47,84,150,0.3); }
   .who-btn.locked { opacity: 0.55; }
 
+  /* 补打卡区 */
+  .retro-bar { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 16px; }
+  .retro-head { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+  .retro-head .retro-title { font-size: 14px; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 6px; }
+  .retro-head .retro-arrow { color: var(--text-muted); font-size: 11px; transition: transform 0.2s; }
+  .retro-bar.open .retro-head .retro-arrow { transform: rotate(180deg); }
+  .retro-body { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+  .retro-bar.open .retro-body { display: block; }
+  .retro-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .retro-row label { font-size: 13px; color: var(--text-muted); min-width: 48px; }
+  .retro-row input[type="date"], .retro-row input[type="text"] {
+    flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; background: var(--card-bg); color: var(--text);
+  }
+  .retro-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .retro-actions .btn-retro { flex: 1; padding: 10px 0; border: 2px solid var(--primary); background: var(--primary); color: #fff; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .retro-actions .btn-retro:active { transform: scale(0.97); }
+  .retro-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
   /* 今日卡片 */
   .today-card { background: linear-gradient(135deg, var(--primary) 0%, #4a7ab5 100%); color: #fff; border-radius: var(--radius); padding: 24px 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
   .today-label { font-size: 14px; opacity: 0.85; letter-spacing: 1px; }
@@ -220,6 +238,27 @@
   <div class="who-bar">
     <div class="who-title">👤 当前打卡人：<strong id="whoName">未选择</strong></div>
     <div class="who-buttons" id="whoButtons"></div>
+  </div>
+
+  <div class="retro-bar" id="retroBar">
+    <div class="retro-head" onclick="toggleRetro()">
+      <div class="retro-title">📅 补打卡（给以前的日期补）</div>
+      <div class="retro-arrow">▼</div>
+    </div>
+    <div class="retro-body">
+      <div class="retro-row">
+        <label>日期</label>
+        <input type="date" id="retroDate">
+      </div>
+      <div class="retro-row">
+        <label>房间</label>
+        <input type="text" id="retroRoom" placeholder="如 B2-402">
+      </div>
+      <div class="retro-actions">
+        <button class="btn-retro" onclick="submitRetro()">提交补打卡</button>
+      </div>
+      <div class="retro-hint">💡 时间自动记为现在；如房间当日已被他人打卡会提示覆盖</div>
+    </div>
   </div>
 
   <div class="today-card">
@@ -668,6 +707,51 @@ function toggleRoomDone(room) {
   var qd = document.getElementById('queryDate').value;
   if (qd === key) runQuery();
   runMonthQuery();
+}
+
+// 补打卡：给以前的日期补打卡
+function toggleRetro() {
+  var bar = document.getElementById('retroBar');
+  bar.classList.toggle('open');
+  if (bar.classList.contains('open')) {
+    // 第一次展开时填默认日期
+    var dEl = document.getElementById('retroDate');
+    if (!dEl.value) dEl.value = dateKey(new Date());
+  }
+}
+
+function submitRetro() {
+  var user = getCurrentUser();
+  if (!user) { alert('请先在顶部选择"当前打卡人"（1~5 号）'); return; }
+  var dateInput = document.getElementById('retroDate').value;
+  if (!dateInput) { alert('请选择日期'); return; }
+  var roomInput = document.getElementById('retroRoom').value.trim();
+  if (!roomInput) { alert('请输入房间'); return; }
+
+  var records = loadRecords();
+  if (!records[dateInput]) records[dateInput] = {};
+  var existing = records[dateInput][roomInput];
+
+  if (existing) {
+    var msg = roomInput + ' 在 ' + dateInput + ' 已被 ' + personLabel(existing.person) +
+              '（' + existing.time + '）打卡。\n\n选"确定"用你（' + user + ' 号）覆盖，选"取消"放弃。';
+    if (!confirm(msg)) return;
+  }
+
+  var n = new Date();
+  var timeStr = (n.getHours() < 10 ? '0' : '') + n.getHours() + ':' + (n.getMinutes() < 10 ? '0' : '') + n.getMinutes();
+  records[dateInput][roomInput] = { person: user, time: timeStr };
+
+  saveRecords(records);
+  document.getElementById('retroRoom').value = '';
+
+  // 刷新相关视图
+  if (dateInput === dateKey(new Date())) renderToday();
+  renderRecords();
+  var qd = document.getElementById('queryDate').value;
+  if (qd === dateInput) runQuery();
+  runMonthQuery();
+  alert('✅ 已补打卡：' + dateInput + ' ' + roomInput);
 }
 
 var expandedDays = {};
