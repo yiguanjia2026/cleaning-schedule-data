@@ -261,6 +261,42 @@
     </div>
   </div>
 
+  <div class="retro-bar" id="fixBar">
+    <div class="retro-head" onclick="toggleFix()">
+      <div class="retro-title">✏️ 修正打卡（改房间 / 改人）</div>
+      <div class="retro-arrow">▼</div>
+    </div>
+    <div class="retro-body">
+      <div class="retro-row">
+        <label>日期</label>
+        <input type="date" id="fixDate">
+      </div>
+      <div class="retro-row">
+        <label>原房间</label>
+        <input type="text" id="fixOldRoom" placeholder="要修改的那条记录的房间号">
+      </div>
+      <div class="retro-row">
+        <label>新房间</label>
+        <input type="text" id="fixNewRoom" placeholder="留空=不改房间">
+      </div>
+      <div class="retro-row">
+        <label>改为人</label>
+        <select id="fixPerson">
+          <option value="">不改</option>
+          <option value="1">1 号</option>
+          <option value="2">2 号</option>
+          <option value="3">3 号</option>
+          <option value="4">4 号</option>
+          <option value="5">5 号</option>
+        </select>
+      </div>
+      <div class="retro-actions">
+        <button class="btn-retro" onclick="submitFix()">提交修正</button>
+      </div>
+      <div class="retro-hint">💡 比如：原房间 B2-402 想改成 B2-403；或 1 号想改成 3 号。两者至少填一项</div>
+    </div>
+  </div>
+
   <div class="today-card">
     <div class="today-label" id="todayLabel"></div>
     <div class="today-date" id="todayDate"></div>
@@ -752,6 +788,72 @@ function submitRetro() {
   if (qd === dateInput) runQuery();
   runMonthQuery();
   alert('✅ 已补打卡：' + dateInput + ' ' + roomInput);
+}
+
+// 修正打卡：改房间 / 改人
+function toggleFix() {
+  var bar = document.getElementById('fixBar');
+  bar.classList.toggle('open');
+  if (bar.classList.contains('open')) {
+    var dEl = document.getElementById('fixDate');
+    if (!dEl.value) dEl.value = dateKey(new Date());
+  }
+}
+
+function submitFix() {
+  var dateInput = document.getElementById('fixDate').value;
+  var oldRoom = document.getElementById('fixOldRoom').value.trim();
+  var newRoom = document.getElementById('fixNewRoom').value.trim();
+  var newPersonStr = document.getElementById('fixPerson').value;
+
+  if (!dateInput) { alert('请选择日期'); return; }
+  if (!oldRoom) { alert('请填写"原房间"（要修改的那条记录的房间号）'); return; }
+  if (!newRoom && !newPersonStr) { alert('请至少填一项："新房间" 或 "改为人"'); return; }
+
+  var records = loadRecords();
+  if (!records[dateInput] || !records[dateInput][oldRoom]) {
+    alert(dateInput + ' 找不到房间 ' + oldRoom + ' 的打卡记录。\n请检查日期和原房间是否填对。');
+    return;
+  }
+
+  var existing = records[dateInput][oldRoom];
+  var finalRoom = newRoom || oldRoom;
+  var finalPerson = newPersonStr ? parseInt(newPersonStr, 10) : existing.person;
+
+  // 改名但不改房间：直接覆盖 person
+  if (finalRoom === oldRoom) {
+    if (existing.person !== finalPerson) {
+      if (!confirm(dateInput + ' ' + oldRoom + '：' + personLabel(existing.person) + ' → ' + personLabel(finalPerson) + '？')) return;
+    }
+    records[dateInput][oldRoom].person = finalPerson;
+  } else {
+    // 改房间：检查新房间是否被占
+    if (records[dateInput][finalRoom]) {
+      var conflict = records[dateInput][finalRoom];
+      if (!confirm('新房间 ' + finalRoom + ' 已被 ' + personLabel(conflict.person) + ' 打卡。\n确定覆盖吗？')) return;
+    }
+    delete records[dateInput][oldRoom];
+    records[dateInput][finalRoom] = {
+      person: finalPerson,
+      time: existing.time   // 时间保留原样（这是"修正"，不是重打）
+    };
+  }
+
+  if (records[dateInput] && Object.keys(records[dateInput]).length === 0) delete records[dateInput];
+
+  saveRecords(records);
+
+  document.getElementById('fixOldRoom').value = '';
+  document.getElementById('fixNewRoom').value = '';
+  document.getElementById('fixPerson').value = '';
+
+  if (dateInput === dateKey(new Date())) renderToday();
+  renderRecords();
+  var qd = document.getElementById('queryDate').value;
+  if (qd === dateInput) runQuery();
+  runMonthQuery();
+
+  alert('✅ 已修正：' + dateInput + ' ' + oldRoom + ' → ' + finalRoom + ' / ' + personLabel(finalPerson));
 }
 
 var expandedDays = {};
